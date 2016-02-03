@@ -90,9 +90,18 @@ trait Types{ types =>
   trait Reader[T]{
     def read0: PF[Js.Value, T]
 
-    final def read : PF[Js.Value, T] = ({
+    // Based on https://github.com/lihaoyi/upickle-pprint/issues/63
+    // and      https://github.com/bwbecker/upickle-pprint/commit/81089fae6c05ee64b4463eb1b21327e96963a089
+    def readNull: PF[Js.Value, T] = {
       case Js.Null => null.asInstanceOf[T]
-    }: PF[Js.Value, T]) orElse read0
+    }
+
+    def read: PF[Js.Value, T] =
+      read0 // orElse readNull orElse read0 // 2nd call is to throw the original exception.
+
+    // final def read : PF[Js.Value, T] = ({
+    //   case Js.Null => null.asInstanceOf[T]
+    // }: PF[Js.Value, T]) orElse read0
   }
   object Reader{
     /**
