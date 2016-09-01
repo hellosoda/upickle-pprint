@@ -51,9 +51,16 @@ trait Implicits extends Types { imp: Generated =>
       def isDefinedAt(x: Value) = pf.isDefinedAt(x)
 
       def apply(v1: Value): T = pf.applyOrElse(v1, (x: Js.Value) => throw Invalid.Data(x, name))
+      override def toString = s"validate($name, $pf)"
     }
     def validateReader[T](name: String)(r: => Reader[T]): Reader[T] = new Reader[T]{
+      override val read0 = validate(name)(r.read)
+      override def toString = s"validateReader($name, $r)"
+    }
+    def validateReaderWithWriter[T](name: String)(r: => Reader[T], w: => Writer[T]) = new Reader[T] with Writer[T] {
       override def read0 = validate(name)(r.read)
+      override def write0 = w.write
+      override def toString = s"validateReaderWithWriter($name, $r, $w)"
     }
   }
 
@@ -134,12 +141,12 @@ trait Implicits extends Types { imp: Generated =>
   implicit val DoubleRW = NumericReadWriter(_.toDouble, _.toDouble)
 
   import collection.generic.CanBuildFrom
-  implicit def SeqishR[V[_], T: R]
-                       (implicit cbf: CanBuildFrom[Nothing, T, V[T]]): R[V[T]] = R[V[T]](
+  implicit def SeqishR[V[_], T]
+                       (implicit cbf: CanBuildFrom[Nothing, T, V[T]], r: R[T]): R[V[T]] = R[V[T]](
     Internal.validate("Array(n)"){case Js.Arr(x@_*) => x.map(readJs[T]).to[V]}
   )
 
-  implicit def SeqishW[T: W, V[_] <: Iterable[_]]: W[V[T]] = W[V[T]]{
+  implicit def SeqishW[T, V[_]](implicit v: V[_] <:< Iterable[_], w: W[T]): W[V[T]] = W[V[T]]{
     (x: V[T]) => Js.Arr(x.iterator.asInstanceOf[Iterator[T]].map(writeJs(_)).toArray:_*)
   }
 

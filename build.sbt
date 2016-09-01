@@ -17,7 +17,8 @@ val settings = Seq(
   testFrameworks += new TestFramework("utest.runner.Framework"),
   libraryDependencies ++= Seq(
     "com.lihaoyi" %% "acyclic" % "0.1.2" % "provided",
-    "com.lihaoyi" %%% "utest" % "0.3.1" % "test",
+    "com.lihaoyi" %%% "utest" % "0.4.3" % "test",
+    "com.lihaoyi" %%% "sourcecode" % "0.1.1",
     "org.scala-lang" % "scala-reflect" % scalaVersion.value % "provided",
     "org.scala-lang" % "scala-compiler" % scalaVersion.value % "provided"
   ) ++ (
@@ -26,12 +27,8 @@ val settings = Seq(
       "org.scalamacros" %% s"quasiquotes" % "2.0.0" % "provided",
       compilerPlugin("org.scalamacros" % s"paradise" % "2.1.0-M5" cross CrossVersion.full)
     )
-    ),
-  unmanagedSourceDirectories in Compile ++= {
-    if (scalaVersion.value startsWith "2.10.") Seq(baseDirectory.value / ".."/"shared"/"src"/ "main" / "scala-2.10")
-    else Seq(baseDirectory.value / ".."/"shared" / "src"/"main" / "scala-2.11")
-  },
-  scalaJSStage in Global := FastOptStage,
+  ),
+  scalaJSStage in Global := FullOptStage,
   autoCompilerPlugins := true,
 //  scalacOptions += "-Xlog-implicits",
   addCompilerPlugin("com.lihaoyi" %% "acyclic" % "0.1.2"),
@@ -121,7 +118,9 @@ val upickle = crossProject
     libraryDependencies += "org.spire-math" %% "jawn-parser" % "0.8.3"
   )
 
-lazy val upickleJS = upickle.js
+lazy val upickleJS = upickle.js.settings(
+   scalaJSUseRhino in Global := false
+)
 lazy val upickleJVM = upickle.jvm
 lazy val test = project
   .in(file("test"))
@@ -137,8 +136,10 @@ lazy val pprint = crossProject
   .settings(
     name := "pprint",
     libraryDependencies ++= Seq(
+      "com.lihaoyi" %%% "fansi" % "0.1.3",
       "org.scala-lang" % "scala-compiler" % scalaVersion.value % "provided",
-      "com.chuusai" %% "shapeless" % "2.2.3" % "test" 
+      "com.chuusai" %% "shapeless" % "2.2.3" % "test" ,
+      "org.tpolecat" %% "doobie-core" % "0.2.3" % "test"
     ),
     sourceGenerators in Compile <+= sourceManaged in Compile map { dir =>
       val file = dir/"pprint"/"PPrintGen.scala"
@@ -156,6 +157,19 @@ lazy val pprint = crossProject
         }
         """
       }
+      val output = s"""
+        package pprint
+        trait PPrinterGen extends GenUtils{
+          ${tuples.mkString("\n")}
+        }
+
+      """.stripMargin
+      IO.write(file, output)
+      Seq(file)
+    },
+    sourceGenerators in Compile <+= sourceManaged in Compile map { dir =>
+      val file = dir/"pprint"/"TPrintGen.scala"
+
       val typeGen = for(i <- 2 to 22) yield {
         val ts = (1 to i).map("T" + _).mkString(", ")
         val tsBounded = (1 to i).map("T" + _ + ": Type").mkString(", ")
@@ -167,15 +181,19 @@ lazy val pprint = crossProject
           implicit def T${i}TPrint[$tsBounded] = make[($ts)](cfg =>
             "(" + $tsGet + ")"
           )
-
         """
       }
       val output = s"""
         package pprint
-        trait PPrinterGen extends GenUtils{
-          ${tuples.mkString("\n")}
+        trait TPrintGen[Type[_], Cfg]{
+          def make[T](f: Cfg => String): Type[T]
+          def get[T: Type](cfg: Cfg): String
+          implicit def F0TPrint[R: Type] = make[() => R](cfg => "() => " + get[R](cfg))
+          implicit def F1TPrint[T1: Type, R: Type] = {
+            make[T1 => R](cfg => get[T1](cfg) + " => " + get[R](cfg))
+          }
+          ${typeGen.mkString("\n")}
         }
-
       """.stripMargin
       IO.write(file, output)
       Seq(file)
