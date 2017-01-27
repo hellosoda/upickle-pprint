@@ -12,7 +12,8 @@ val settings = Seq(
   // Sonatype
   publishArtifact in Test := false,
   publishTo <<= version { (v: String) =>
-    Some("releases"  at "https://oss.sonatype.org/service/local/staging/deploy/maven2")
+    // Some("releases"  at "https://oss.sonatype.org/service/local/staging/deploy/maven2")
+    Some("HelloSoda Maven Repository" at "s3://maven.hellosoda.com/releases")
   },
   testFrameworks += new TestFramework("utest.runner.Framework"),
   libraryDependencies ++= Seq(
